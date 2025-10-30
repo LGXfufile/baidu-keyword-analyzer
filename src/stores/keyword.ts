@@ -13,7 +13,14 @@ export const useKeywordStore = defineStore('keyword', () => {
   const analyzing = ref(false)
   const currentAnalysis = ref<KeywordAnalysisResponse | null>(null)
   const searchHistory = ref<SearchHistory[]>([])
-  const variantTypes = ref<VariantTypes>({})
+  const variantTypes = ref<VariantTypes>({
+    'alpha': '字母后缀 (a-z)',
+    'alpha_space': '字母前缀带空格 (a-z)',
+    'question_how': '疑问词-怎么 (怎么-z)',
+    'question_what': '疑问词-什么 (什么-z)',
+    'question_can': '疑问词-能 (能-z)',
+    'question_which': '疑问词-哪 (哪-z)'
+  })
   const progress = ref<ProgressUpdate | null>(null)
   const error = ref<string | null>(null)
 

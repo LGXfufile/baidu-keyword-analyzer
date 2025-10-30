@@ -78,12 +78,12 @@
             <el-checkbox-group v-model="selectedTypes" :disabled="analyzing">
               <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <el-checkbox
-                  v-for="(label, key) in variantTypes"
+                  v-for="(value, key) in variantTypes"
                   :key="key"
                   :label="key"
                   class="!mr-0"
                 >
-                  <span class="text-sm">{{ label }}</span>
+                  <span class="text-sm">{{ value }}</span>
                 </el-checkbox>
               </div>
             </el-checkbox-group>
@@ -177,9 +177,22 @@ const { toggleTheme } = themeStore
 const loadVariantTypes = async () => {
   try {
     const types = await keywordApi.getVariantTypes()
-    keywordStore.setVariantTypes(types as VariantTypes)
+    // 如果返回的是包装对象，提取variant_types字段
+    const variantTypesData = types.variant_types || types
+    keywordStore.setVariantTypes(variantTypesData as VariantTypes)
   } catch (error) {
-    ElMessage.error('加载变体类型失败')
+    console.error('加载变体类型失败:', error)
+    // 设置默认变体类型
+    const defaultTypes: VariantTypes = {
+      'alpha': '字母后缀 (a-z)',
+      'alpha_space': '字母前缀带空格 (a-z)',
+      'question_how': '疑问词-怎么 (怎么-z)',
+      'question_what': '疑问词-什么 (什么-z)',
+      'question_can': '疑问词-能 (能-z)',
+      'question_which': '疑问词-哪 (哪-z)'
+    }
+    keywordStore.setVariantTypes(defaultTypes)
+    ElMessage.error('加载变体类型失败，使用默认配置')
   }
 }
 
