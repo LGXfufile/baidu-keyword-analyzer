@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>百度关键词分析器</title>
+    <meta name="description" content="智能挖掘百度搜索下拉词，发现长尾关键词和用户需求" />
+    <meta name="keywords" content="百度,关键词,下拉词,SEO,长尾词,搜索分析" />
+    <style>
+      /* 预加载样式防止闪烁 */
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+        background: #f9fafb;
+        color: #111827;
+      }
+      
+      .dark body {
+        background: #111827;
+        color: #f3f4f6;
+      }
+      
+      #app {
+        min-height: 100vh;
+      }
+      
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        font-size: 16px;
+        color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="loading">
+        加载中...
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
