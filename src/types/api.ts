@@ -29,6 +29,10 @@ export interface VariantTypes {
   [key: string]: string
 }
 
+export interface VariantTypesResponse {
+  variant_types: VariantTypes
+}
+
 export interface ProgressUpdate {
   session_id: string
   processed: number

@@ -53,7 +53,7 @@
     </div>
 
     <!-- 统计概览 -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
       <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
         <div class="flex items-center justify-between">
           <div>
@@ -98,6 +98,30 @@
           </div>
           <svg class="w-8 h-8 text-purple-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+          </svg>
+        </div>
+      </div>
+      
+      <div class="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white p-4 rounded-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-indigo-100 text-sm">去重数量</p>
+            <p class="text-2xl font-bold">{{ currentAnalysis?.summary.duplicate_removed || 0 }}</p>
+          </div>
+          <svg class="w-8 h-8 text-indigo-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+      </div>
+      
+      <div class="bg-gradient-to-r from-teal-500 to-teal-600 text-white p-4 rounded-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-teal-100 text-sm">唯一建议词</p>
+            <p class="text-2xl font-bold">{{ currentAnalysis?.summary.unique_suggestions || 0 }}</p>
+          </div>
+          <svg class="w-8 h-8 text-teal-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
           </svg>
         </div>
       </div>

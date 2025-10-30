@@ -4,6 +4,7 @@ import type {
   KeywordAnalysisResponse,
   SearchHistory,
   VariantTypes,
+  VariantTypesResponse,
   ProgressUpdate,
   ExportRequest
 } from '@/types/api'
@@ -39,7 +40,7 @@ api.interceptors.response.use(
 
 export const keywordApi = {
   // 获取变体类型
-  getVariantTypes(): Promise<VariantTypes> {
+  getVariantTypes(): Promise<VariantTypesResponse> {
     return api.get('/variant-types')
   },
 

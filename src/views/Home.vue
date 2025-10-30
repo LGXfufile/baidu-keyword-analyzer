@@ -78,12 +78,40 @@
             <el-checkbox-group v-model="selectedTypes" :disabled="analyzing">
               <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <el-checkbox
-                  v-for="(value, key) in variantTypes"
-                  :key="key"
-                  :label="key"
+                  label="alpha"
                   class="!mr-0"
                 >
-                  <span class="text-sm">{{ value }}</span>
+                  <span class="text-sm">字母后缀 (a-z)</span>
+                </el-checkbox>
+                <el-checkbox
+                  label="alpha_space"
+                  class="!mr-0"
+                >
+                  <span class="text-sm">字母前缀带空格 (a-z)</span>
+                </el-checkbox>
+                <el-checkbox
+                  label="question_how"
+                  class="!mr-0"
+                >
+                  <span class="text-sm">疑问词-怎么 (怎么-z)</span>
+                </el-checkbox>
+                <el-checkbox
+                  label="question_what"
+                  class="!mr-0"
+                >
+                  <span class="text-sm">疑问词-什么 (什么-z)</span>
+                </el-checkbox>
+                <el-checkbox
+                  label="question_can"
+                  class="!mr-0"
+                >
+                  <span class="text-sm">疑问词-能 (能-z)</span>
+                </el-checkbox>
+                <el-checkbox
+                  label="question_which"
+                  class="!mr-0"
+                >
+                  <span class="text-sm">疑问词-哪 (哪-z)</span>
                 </el-checkbox>
               </div>
             </el-checkbox-group>
@@ -176,10 +204,17 @@ const { toggleTheme } = themeStore
 
 const loadVariantTypes = async () => {
   try {
-    const types = await keywordApi.getVariantTypes()
-    // 如果返回的是包装对象，提取variant_types字段
-    const variantTypesData = types.variant_types || types
+    console.log('开始加载变体类型...')
+    const response = await keywordApi.getVariantTypes()
+    console.log('API响应:', response)
+    
+    // 确保我们获取到正确的数据结构
+    const variantTypesData = response.variant_types || response
+    console.log('解析出的变体类型:', variantTypesData)
+    
+    // 强制更新store
     keywordStore.setVariantTypes(variantTypesData as VariantTypes)
+    console.log('Store更新后的变体类型:', variantTypes.value)
   } catch (error) {
     console.error('加载变体类型失败:', error)
     // 设置默认变体类型

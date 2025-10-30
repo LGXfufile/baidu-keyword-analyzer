@@ -13,12 +13,11 @@ class KeywordService:
     
     VARIANT_TYPES = {
         'alpha': '字母后缀 (a-z)',
-        'alpha_space': '字母后缀带空格 ( a- z)',  
-        'question_how': '疑问词-怎么 (怎么a-z)',
-        'question_what': '疑问词-什么 (什么a-z)',
-        'question_can': '疑问词-可以 (可以a-z)',
-        'numbers': '数字后缀 (1-9)',
-        'common_suffix': '常用后缀'
+        'alpha_space': '字母前缀带空格 (a-z)',
+        'question_how': '疑问词-怎么 (怎么-z)',
+        'question_what': '疑问词-什么 (什么-z)',
+        'question_can': '疑问词-能 (能-z)',
+        'question_which': '疑问词-哪 (哪-z)'
     }
     
     @staticmethod
@@ -40,20 +39,50 @@ class KeywordService:
                 variants[variant_type] = [f"{base_keyword}什么{letter}" for letter in string.ascii_lowercase]
                 
             elif variant_type == 'question_can':
-                variants[variant_type] = [f"{base_keyword}可以{letter}" for letter in string.ascii_lowercase]
+                variants[variant_type] = [f"{base_keyword}能{letter}" for letter in string.ascii_lowercase]
                 
-            elif variant_type == 'numbers':
-                variants[variant_type] = [f"{base_keyword}{num}" for num in range(1, 10)]
-                
-            elif variant_type == 'common_suffix':
-                common_suffixes = [
-                    '是什么', '怎么用', '怎么做', '多少钱', '哪个好',
-                    '教程', '方法', '技巧', '攻略', '推荐',
-                    '价格', '评测', '对比', '排行榜', '品牌'
-                ]
-                variants[variant_type] = [f"{base_keyword}{suffix}" for suffix in common_suffixes]
+            elif variant_type == 'question_which':
+                variants[variant_type] = [f"{base_keyword}哪{letter}" for letter in string.ascii_lowercase]
         
         return variants
+    
+    @staticmethod
+    def _deduplicate_suggestions(results: Dict) -> Dict:
+        """去重建议词 - 保持简单的字符串列表格式"""
+        global_suggestions = set()
+        duplicate_count = 0
+        
+        # 处理每个变体类型
+        for variant_type, variant_data in results['results'].items():
+            for variant_keyword, suggestions in variant_data.items():
+                if not suggestions:
+                    continue
+                    
+                # 变体内去重：保持顺序的去重
+                seen_in_variant = set()
+                unique_suggestions = []
+                
+                for suggestion in suggestions:
+                    if suggestion not in seen_in_variant:
+                        seen_in_variant.add(suggestion)
+                        unique_suggestions.append(suggestion)
+                    else:
+                        duplicate_count += 1
+                
+                # 更新建议词列表
+                results['results'][variant_type][variant_keyword] = unique_suggestions
+                global_suggestions.update(unique_suggestions)
+        
+        # 更新统计信息
+        results['summary']['duplicate_removed'] = duplicate_count
+        results['summary']['unique_suggestions'] = len(global_suggestions)
+        results['summary']['total_suggestions'] = sum(
+            len(suggestions) 
+            for variant_data in results['results'].values()
+            for suggestions in variant_data.values()
+        )
+        
+        return results
     
     @staticmethod
     async def analyze_keywords(
@@ -141,6 +170,9 @@ class KeywordService:
                 
                 # 最终提交
                 await db.commit()
+                
+                # 应用去重逻辑
+                results = KeywordService._deduplicate_suggestions(results)
                 
                 # 更新搜索历史
                 search_history.total_suggestions = results['summary']['total_suggestions']
