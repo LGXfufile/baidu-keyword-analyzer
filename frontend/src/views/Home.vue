@@ -150,6 +150,7 @@ import { useThemeStore } from '@/stores/theme'
 import { keywordApi } from '@/utils/api'
 import AnalysisResults from '@/components/AnalysisResults.vue'
 import SearchHistoryDialog from '@/components/SearchHistoryDialog.vue'
+import type { VariantTypes } from '@/types/api'
 
 // Store
 const keywordStore = useKeywordStore()
@@ -168,7 +169,7 @@ const { isDark } = storeToRefs(themeStore)
 const keyword = ref('')
 const selectedTypes = ref<string[]>(['alpha', 'question_how'])
 const showHistory = ref(false)
-let progressTimer: NodeJS.Timeout | null = null
+let progressTimer: number | null = null
 
 // 方法
 const { toggleTheme } = themeStore
@@ -176,7 +177,7 @@ const { toggleTheme } = themeStore
 const loadVariantTypes = async () => {
   try {
     const types = await keywordApi.getVariantTypes()
-    keywordStore.setVariantTypes(types.variant_types || types)
+    keywordStore.setVariantTypes(types as VariantTypes)
   } catch (error) {
     ElMessage.error('加载变体类型失败')
   }

@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="visible"
-    @update:model-value="(value) => emit('update:visible', value)"
+    @update:model-value="(value: boolean) => emit('update:visible', value)"
     title="搜索历史"
     width="800px"
   >
