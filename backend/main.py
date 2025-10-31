@@ -12,6 +12,7 @@ from models import (
     ExportRequest
 )
 from services.keyword_service import KeywordService
+from services.business_analyzer import BusinessAnalyzer
 from config import settings
 import asyncio
 import logging
@@ -144,6 +145,52 @@ async def get_session_results(
     except Exception as e:
         logger.error(f"获取会话结果失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取结果失败: {str(e)}")
+
+@app.get("/api/business-analysis/{session_id}")
+async def get_business_analysis(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取商业价值分析结果"""
+    try:
+        results = await KeywordService.get_session_results(session_id, db)
+        
+        # 如果结果中没有商业分析，则重新生成
+        if 'business_analysis' not in results:
+            # 重新分析并添加商业价值
+            results = KeywordService._add_business_analysis(results)
+        
+        return {
+            'session_id': session_id,
+            'business_analysis': results.get('business_analysis', {}),
+            'summary': results.get('summary', {})
+        }
+    except Exception as e:
+        logger.error(f"获取商业分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"商业分析失败: {str(e)}")
+
+@app.post("/api/analyze-keyword")
+async def analyze_single_keyword(request: dict):
+    """分析单个关键词的商业价值"""
+    try:
+        keyword = request.get('keyword', '')
+        if not keyword:
+            raise HTTPException(status_code=400, detail="关键词不能为空")
+        
+        metrics = BusinessAnalyzer.analyze_keyword(keyword)
+        
+        return {
+            'keyword': keyword,
+            'commercial_score': metrics.commercial_score,
+            'intent_type': metrics.intent_type,
+            'competition_level': metrics.competition_level,
+            'search_volume_estimate': metrics.search_volume_estimate,
+            'difficulty_score': metrics.difficulty_score,
+            'opportunity_score': metrics.opportunity_score
+        }
+    except Exception as e:
+        logger.error(f"单关键词分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
 
 @app.post("/api/export")
 async def export_results(

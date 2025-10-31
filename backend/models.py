@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 
 class KeywordAnalysisRequest(BaseModel):
@@ -12,7 +12,8 @@ class KeywordAnalysisResponse(BaseModel):
     variant_types: List[str]
     total_variants: int
     results: Dict[str, Dict[str, List[str]]]
-    summary: Dict[str, int]
+    summary: Dict[str, Any]  # 改为Any支持更多类型
+    business_analysis: Optional[Dict[str, Any]] = None  # 添加商业分析字段
 
 class SearchHistoryResponse(BaseModel):
     session_id: str

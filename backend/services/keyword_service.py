@@ -2,6 +2,7 @@ from typing import List, Dict, Set
 import string
 import asyncio
 from services.baidu_service import BaiduSuggestService
+from services.business_analyzer import BusinessAnalyzer
 from database import KeywordResult, SearchHistory, get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -81,6 +82,85 @@ class KeywordService:
             for variant_data in results['results'].values()
             for suggestions in variant_data.values()
         )
+        
+        return results
+    
+    @staticmethod
+    def _add_business_analysis(results: Dict) -> Dict:
+        """添加商业价值分析"""
+        # 分析每个变体类型的商业价值
+        business_analysis = {}
+        total_commercial_score = 0
+        total_suggestions_analyzed = 0
+        intent_distribution = {}
+        
+        for variant_type, variant_data in results['results'].items():
+            variant_analysis = {
+                'average_commercial_score': 0,
+                'top_opportunities': [],
+                'intent_distribution': {},
+                'suggestions_analysis': {}
+            }
+            
+            all_suggestions = []
+            for variant_keyword, suggestions in variant_data.items():
+                all_suggestions.extend(suggestions)
+                
+                # 分析每个建议词
+                suggestions_analysis = []
+                for suggestion in suggestions:
+                    metrics = BusinessAnalyzer.analyze_keyword(suggestion, len(suggestions))
+                    suggestions_analysis.append({
+                        'keyword': suggestion,
+                        'commercial_score': metrics.commercial_score,
+                        'intent_type': metrics.intent_type,
+                        'competition_level': metrics.competition_level,
+                        'search_volume_estimate': metrics.search_volume_estimate,
+                        'difficulty_score': metrics.difficulty_score,
+                        'opportunity_score': metrics.opportunity_score
+                    })
+                
+                variant_analysis['suggestions_analysis'][variant_keyword] = suggestions_analysis
+            
+            # 分析该变体类型的整体情况
+            if all_suggestions:
+                list_analysis = BusinessAnalyzer.analyze_suggestion_list(all_suggestions)
+                variant_analysis['average_commercial_score'] = list_analysis['average_commercial_score']
+                variant_analysis['top_opportunities'] = list_analysis['top_opportunities']
+                variant_analysis['intent_distribution'] = list_analysis['intent_distribution']
+                
+                # 累计统计
+                total_commercial_score += list_analysis['average_commercial_score'] * list_analysis['total_count']
+                total_suggestions_analyzed += list_analysis['total_count']
+                
+                # 合并意图分布
+                for intent, count in list_analysis['intent_distribution'].items():
+                    intent_distribution[intent] = intent_distribution.get(intent, 0) + count
+            
+            business_analysis[variant_type] = variant_analysis
+        
+        # 添加到结果中
+        results['business_analysis'] = business_analysis
+        
+        # 更新summary中的商业价值信息
+        if total_suggestions_analyzed > 0:
+            results['summary']['average_commercial_score'] = round(total_commercial_score / total_suggestions_analyzed, 1)
+        else:
+            results['summary']['average_commercial_score'] = 0
+            
+        results['summary']['intent_distribution'] = intent_distribution
+        
+        # 计算整体最佳机会
+        all_opportunities = []
+        for variant_analysis in business_analysis.values():
+            all_opportunities.extend(variant_analysis['top_opportunities'])
+        
+        # 按机会评分排序，取前10个
+        results['summary']['top_opportunities'] = sorted(
+            all_opportunities, 
+            key=lambda x: x['opportunity_score'], 
+            reverse=True
+        )[:10]
         
         return results
     
@@ -173,6 +253,9 @@ class KeywordService:
                 
                 # 应用去重逻辑
                 results = KeywordService._deduplicate_suggestions(results)
+                
+                # 添加商业价值分析
+                results = KeywordService._add_business_analysis(results)
                 
                 # 更新搜索历史
                 search_history.total_suggestions = results['summary']['total_suggestions']

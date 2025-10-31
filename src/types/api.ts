@@ -3,6 +3,38 @@ export interface KeywordAnalysisRequest {
   variant_types: string[]
 }
 
+export interface BusinessMetrics {
+  commercial_score: number
+  intent_type: string
+  competition_level: string
+  search_volume_estimate: number
+  difficulty_score: number
+  opportunity_score: number
+}
+
+export interface SuggestionAnalysis {
+  keyword: string
+  commercial_score: number
+  intent_type: string
+  competition_level: string
+  search_volume_estimate: number
+  difficulty_score: number
+  opportunity_score: number
+}
+
+export interface BusinessAnalysis {
+  average_commercial_score: number
+  top_opportunities: Array<{
+    keyword: string
+    commercial_score: number
+    opportunity_score: number
+    intent_type: string
+    search_volume_estimate: number
+  }>
+  intent_distribution: Record<string, number>
+  suggestions_analysis: Record<string, SuggestionAnalysis[]>
+}
+
 export interface KeywordAnalysisResponse {
   session_id: string
   base_keyword: string
@@ -15,7 +47,17 @@ export interface KeywordAnalysisResponse {
     failed_variants: number
     duplicate_removed?: number
     unique_suggestions?: number
+    average_commercial_score?: number
+    intent_distribution?: Record<string, number>
+    top_opportunities?: Array<{
+      keyword: string
+      commercial_score: number
+      opportunity_score: number
+      intent_type: string
+      search_volume_estimate: number
+    }>
   }
+  business_analysis?: Record<string, BusinessAnalysis>
 }
 
 export interface SearchHistory {

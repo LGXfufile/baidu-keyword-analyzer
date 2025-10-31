@@ -135,6 +135,7 @@
           <el-radio-button label="tree">树形视图</el-radio-button>
           <el-radio-button label="table">表格视图</el-radio-button>
           <el-radio-button label="chart">图表视图</el-radio-button>
+          <el-radio-button label="business">商业分析</el-radio-button>
         </el-radio-group>
         
         <el-input
@@ -249,6 +250,9 @@
           </div>
         </div>
       </div>
+
+      <!-- 商业分析视图 -->
+      <BusinessAnalysis v-else-if="viewMode === 'business'" :analysis-data="currentAnalysis || undefined" />
     </div>
   </div>
 </template>
@@ -270,6 +274,7 @@ import {
 import { useKeywordStore } from '@/stores/keyword'
 import { keywordApi } from '@/utils/api'
 import { downloadFile, copyToClipboard, calculateWordFrequency } from '@/utils'
+import BusinessAnalysis from './BusinessAnalysis.vue'
 
 // 注册ECharts组件
 use([
