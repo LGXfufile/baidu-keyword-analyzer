@@ -192,6 +192,67 @@ async def analyze_single_keyword(request: dict):
         logger.error(f"单关键词分析失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
 
+@app.post("/api/blue-ocean-discovery")
+async def discover_blue_ocean_keywords(request: dict):
+    """发现蓝海关键词"""
+    try:
+        keyword = request.get('keyword', '')
+        limit = request.get('limit', 10)
+        
+        if not keyword:
+            raise HTTPException(status_code=400, detail="关键词不能为空")
+        
+        blue_oceans = await BusinessAnalyzer.discover_blue_ocean_keywords(keyword, limit)
+        
+        return {
+            'keyword': keyword,
+            'blue_ocean_count': len(blue_oceans),
+            'blue_ocean_keywords': [
+                {
+                    'keyword': bo.keyword,
+                    'opportunity_score': bo.opportunity_score,
+                    'search_volume': bo.search_volume,
+                    'competition_companies': bo.competition_companies,
+                    'competition_level': bo.competition_level,
+                    'sem_price': bo.sem_price,
+                    'longtail_count': bo.longtail_count,
+                    'platforms': bo.platforms,
+                    'reasons': bo.reasons
+                }
+                for bo in blue_oceans
+            ]
+        }
+    except Exception as e:
+        logger.error(f"蓝海词发现失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"发现失败: {str(e)}")
+
+@app.post("/api/analyze-with-real-data")
+async def analyze_keyword_with_real_data(request: dict):
+    """使用5118真实数据分析关键词"""
+    try:
+        keyword = request.get('keyword', '')
+        enable_5118 = request.get('enable_5118', True)
+        
+        if not keyword:
+            raise HTTPException(status_code=400, detail="关键词不能为空")
+        
+        metrics = await BusinessAnalyzer.analyze_with_real_data(keyword, enable_5118)
+        
+        return {
+            'keyword': keyword,
+            'commercial_score': metrics.commercial_score,
+            'intent_type': metrics.intent_type,
+            'competition_level': metrics.competition_level,
+            'search_volume_estimate': metrics.search_volume_estimate,
+            'difficulty_score': metrics.difficulty_score,
+            'opportunity_score': metrics.opportunity_score,
+            'is_blue_ocean': metrics.is_blue_ocean,
+            'real_data_available': metrics.real_data_available
+        }
+    except Exception as e:
+        logger.error(f"真实数据分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+
 @app.post("/api/export")
 async def export_results(
     request: ExportRequest,
