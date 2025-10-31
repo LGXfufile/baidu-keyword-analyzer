@@ -13,6 +13,8 @@ export interface KeywordAnalysisResponse {
     total_suggestions: number
     successful_variants: number
     failed_variants: number
+    duplicate_removed?: number
+    unique_suggestions?: number
   }
 }
 

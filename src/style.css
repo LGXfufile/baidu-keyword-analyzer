@@ -2,74 +2,172 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 自定义样式 */
+/* Apple-inspired design system (working version) */
 @layer base {
   * {
     scroll-behavior: smooth;
   }
   
   body {
-    @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300;
-    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
-    line-height: 1.6;
+    @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+    line-height: 1.5;
+    letter-spacing: -0.01em;
+    transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-weight: 400;
+    font-size: 15px;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+    line-height: 1.2;
   }
 }
 
 @layer components {
-  .glass-card {
-    @apply bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border border-white/20 dark:border-gray-700/20 shadow-glass dark:shadow-glass-dark rounded-xl;
+  /* Apple-style card system */
+  .apple-card {
+    @apply bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg dark:shadow-2xl;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
-  .btn-primary {
-    @apply bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 
-           text-white font-medium px-6 py-3 rounded-lg transition-all duration-200 
-           shadow-lg hover:shadow-xl transform hover:-translate-y-0.5;
+  .apple-card:hover {
+    @apply shadow-xl dark:shadow-2xl transform translate-y-[-1px];
   }
-  
-  .btn-secondary {
-    @apply bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 
-           text-gray-700 dark:text-gray-200 font-medium px-6 py-3 rounded-lg 
-           transition-all duration-200 border border-gray-200 dark:border-gray-600;
+
+  /* Button system */
+  .btn-apple-primary {
+    @apply bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-medium rounded-xl px-6 py-3 shadow-lg;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: -0.005em;
   }
-  
-  .input-field {
-    @apply bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-600 
-           rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary-500 focus:border-transparent 
-           transition-all duration-200 backdrop-blur-sm;
+
+  .btn-apple-primary:hover {
+    @apply shadow-xl transform translate-y-[-0.5px];
   }
-  
-  .loading-dots::after {
-    content: '';
-    animation: loading-dots 1.5s infinite;
+
+  .btn-apple-primary:active {
+    @apply transform scale-[0.98] shadow-lg;
+  }
+
+  .btn-apple-secondary {
+    @apply bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 font-medium rounded-xl px-6 py-3 border border-gray-200 dark:border-gray-600;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: -0.005em;
+  }
+
+  .btn-apple-secondary:hover {
+    @apply shadow-lg transform translate-y-[-0.5px];
+  }
+
+  .btn-apple-secondary:active {
+    @apply transform scale-[0.98];
+  }
+
+  /* Input system */
+  .input-apple {
+    @apply bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 font-regular;
+    @apply focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-400 dark:focus:border-blue-400;
+    @apply placeholder-gray-500 dark:placeholder-gray-400;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: -0.005em;
+  }
+
+  .input-apple:focus {
+    @apply shadow-xl;
+  }
+
+  /* Navigation bar */
+  .nav-apple {
+    @apply bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-b border-gray-200/50 dark:border-gray-700/50;
+  }
+
+  /* Progress indicator */
+  .progress-apple {
+    @apply bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden;
+  }
+
+  .progress-apple-bar {
+    @apply bg-blue-500 h-full rounded-full transition-all duration-300 ease-out;
+  }
+
+  /* Loading states */
+  .loading-apple {
+    @apply animate-loading-apple text-blue-500;
+  }
+
+  /* Typography utilities */
+  .text-apple-title {
+    @apply text-gray-900 dark:text-gray-100 font-semibold tracking-tight;
+  }
+
+  .text-apple-body {
+    @apply text-gray-700 dark:text-gray-300 font-regular;
+  }
+
+  .text-apple-caption {
+    @apply text-gray-500 dark:text-gray-400 font-regular text-sm opacity-70;
+  }
+
+  /* Layout utilities */
+  .container-apple {
+    @apply max-w-6xl mx-auto px-6 lg:px-8;
+  }
+
+  .section-apple {
+    @apply py-12 lg:py-16;
+  }
+
+  .grid-apple {
+    @apply grid gap-6 lg:gap-8;
+  }
+
+  /* Animation utilities */
+  .animate-apple-enter {
+    @apply animate-fade-in;
+  }
+
+  .animate-apple-slide-up {
+    @apply animate-slide-up;
+  }
+
+  .animate-apple-scale {
+    @apply animate-scale-in;
   }
 }
 
 @layer utilities {
-  .text-gradient {
-    @apply bg-gradient-to-r from-primary-500 to-primary-700 bg-clip-text text-transparent;
+  /* Interaction states */
+  .interactive-apple {
+    @apply transition-all duration-200 ease-out cursor-pointer;
   }
-  
-  .hover-lift {
-    @apply transition-transform duration-200 hover:-translate-y-1;
+
+  .interactive-apple:hover {
+    @apply transform translate-y-[-1px];
+  }
+
+  .interactive-apple:active {
+    @apply transform scale-[0.98];
+  }
+
+  /* Focus states */
+  .focus-apple {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-800;
   }
 }
 
-@keyframes loading-dots {
-  0%, 20% { content: ''; }
-  40% { content: '.'; }
-  60% { content: '..'; }
-  80%, 100% { content: '...'; }
-}
-
-/* Element Plus 主题定制 */
+/* Element Plus theme overrides */
 :root {
-  --el-color-primary: #3b82f6;
-  --el-color-primary-light-3: #93c5fd;
-  --el-color-primary-light-5: #dbeafe;
-  --el-color-primary-light-7: #eff6ff;
-  --el-color-primary-light-8: #f8fafc;
-  --el-color-primary-light-9: #fefefe;
-  --el-color-primary-dark-2: #2563eb;
+  --el-color-primary: #007AFF;
+  --el-color-primary-light-3: #4da3ff;
+  --el-color-primary-light-5: #80c1ff;
+  --el-color-primary-light-7: #b3dfff;
+  --el-color-primary-light-8: #cce9ff;
+  --el-color-primary-light-9: #e6f4ff;
+  --el-color-primary-dark-2: #0056d6;
+  --el-border-radius-base: 12px;
+  --el-border-radius-small: 8px;
+  --el-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
 }
 
 .dark {
@@ -81,20 +179,37 @@
   --el-border-color-light: #4b5563;
 }
 
-/* 自定义滚动条 */
+/* Custom scrollbar - Apple style */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-800;
+  @apply bg-transparent;
 }
 
 ::-webkit-scrollbar-thumb {
   @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-gray-400 dark:bg-gray-500;
+}
+
+/* Smooth scrolling for all elements */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Remove default button styles */
+button {
+  @apply focus-apple;
+}
+
+/* Form elements consistency */
+input, select, textarea {
+  @apply focus-apple;
 }
