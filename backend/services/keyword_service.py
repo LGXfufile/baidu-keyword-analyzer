@@ -86,8 +86,8 @@ class KeywordService:
         return results
     
     @staticmethod
-    def _add_business_analysis(results: Dict) -> Dict:
-        """添加商业价值分析"""
+    async def _add_business_analysis(results: Dict) -> Dict:
+        """添加商业价值分析 - 智能使用5118真实数据"""
         # 分析每个变体类型的商业价值
         business_analysis = {}
         total_commercial_score = 0
@@ -105,29 +105,58 @@ class KeywordService:
             all_suggestions = []
             for variant_keyword, suggestions in variant_data.items():
                 all_suggestions.extend(suggestions)
-                
-                # 分析每个建议词
-                suggestions_analysis = []
-                for suggestion in suggestions:
-                    metrics = BusinessAnalyzer.analyze_keyword(suggestion, len(suggestions))
-                    suggestions_analysis.append({
-                        'keyword': suggestion,
-                        'commercial_score': metrics.commercial_score,
-                        'intent_type': metrics.intent_type,
-                        'competition_level': metrics.competition_level,
-                        'search_volume_estimate': metrics.search_volume_estimate,
-                        'difficulty_score': metrics.difficulty_score,
-                        'opportunity_score': metrics.opportunity_score
-                    })
-                
-                variant_analysis['suggestions_analysis'][variant_keyword] = suggestions_analysis
             
-            # 分析该变体类型的整体情况
+            # 分析该变体类型的整体情况 - 使用真实数据但限制数量
             if all_suggestions:
-                list_analysis = BusinessAnalyzer.analyze_suggestion_list(all_suggestions)
+                # 限制分析数量，避免5118 API超限
+                limited_suggestions = all_suggestions[:20]  # 只分析前20个
+                list_analysis = await BusinessAnalyzer.analyze_suggestion_list_with_real_data(limited_suggestions, enable_5118=True)
                 variant_analysis['average_commercial_score'] = list_analysis['average_commercial_score']
                 variant_analysis['top_opportunities'] = list_analysis['top_opportunities']
                 variant_analysis['intent_distribution'] = list_analysis['intent_distribution']
+                
+                # 为每个变体关键词生成基本分析
+                for variant_keyword, suggestions in variant_data.items():
+                    suggestions_analysis = []
+                    for suggestion in suggestions[:5]:  # 每个变体只分析前5个
+                        if suggestion in limited_suggestions:
+                            # 从list_analysis中找到对应的分析结果
+                            found_analysis = next(
+                                (opp for opp in list_analysis['top_opportunities'] if opp['keyword'] == suggestion),
+                                None
+                            )
+                            if found_analysis:
+                                suggestions_analysis.append(found_analysis)
+                            else:
+                                # 回退到估算分析
+                                metrics = BusinessAnalyzer.analyze_keyword(suggestion, len(suggestions))
+                                suggestions_analysis.append({
+                                    'keyword': suggestion,
+                                    'commercial_score': metrics.commercial_score,
+                                    'intent_type': metrics.intent_type,
+                                    'competition_level': metrics.competition_level,
+                                    'search_volume_estimate': metrics.search_volume_estimate,
+                                    'difficulty_score': metrics.difficulty_score,
+                                    'opportunity_score': metrics.opportunity_score,
+                                    'is_blue_ocean': metrics.is_blue_ocean,
+                                    'real_data_available': False
+                                })
+                        else:
+                            # 对于未包含在限制列表中的，使用估算模式
+                            metrics = BusinessAnalyzer.analyze_keyword(suggestion, len(suggestions))
+                            suggestions_analysis.append({
+                                'keyword': suggestion,
+                                'commercial_score': metrics.commercial_score,
+                                'intent_type': metrics.intent_type,
+                                'competition_level': metrics.competition_level,
+                                'search_volume_estimate': metrics.search_volume_estimate,
+                                'difficulty_score': metrics.difficulty_score,
+                                'opportunity_score': metrics.opportunity_score,
+                                'is_blue_ocean': metrics.is_blue_ocean,
+                                'real_data_available': False
+                            })
+                    
+                    variant_analysis['suggestions_analysis'][variant_keyword] = suggestions_analysis
                 
                 # 累计统计
                 total_commercial_score += list_analysis['average_commercial_score'] * list_analysis['total_count']
@@ -169,12 +198,14 @@ class KeywordService:
         base_keyword: str, 
         variant_types: List[str],
         db: AsyncSession,
-        progress_callback=None
+        progress_callback=None,
+        session_id: str = None
     ) -> Dict:
         """分析关键词并获取下拉词"""
         
-        # 生成会话ID
-        session_id = str(uuid.uuid4())
+        # 使用传入的session_id或生成新的
+        if session_id is None:
+            session_id = str(uuid.uuid4())
         
         # 生成变体
         variants = KeywordService.generate_variants(base_keyword, variant_types)
@@ -254,8 +285,8 @@ class KeywordService:
                 # 应用去重逻辑
                 results = KeywordService._deduplicate_suggestions(results)
                 
-                # 添加商业价值分析
-                results = KeywordService._add_business_analysis(results)
+                # 添加商业价值分析 - 使用真实5118数据
+                results = await KeywordService._add_business_analysis(results)
                 
                 # 更新搜索历史
                 search_history.total_suggestions = results['summary']['total_suggestions']
@@ -292,12 +323,22 @@ class KeywordService:
     @staticmethod
     async def get_session_results(session_id: str, db: AsyncSession) -> Dict:
         """获取特定会话的结果"""
+        # 先查询原始关键词
+        history_query = select(SearchHistory.original_keyword).where(
+            SearchHistory.session_id == session_id
+        )
+        history_result = await db.execute(history_query)
+        original_keyword = history_result.scalar_one_or_none()
+        
+        if not original_keyword:
+            return {
+                'session_id': session_id,
+                'results': {}
+            }
+        
+        # 查询关键词结果
         query = select(KeywordResult).where(
-            KeywordResult.original_keyword == (
-                select(SearchHistory.original_keyword).where(
-                    SearchHistory.session_id == session_id
-                )
-            )
+            KeywordResult.original_keyword == original_keyword
         ).order_by(KeywordResult.variant_type, KeywordResult.variant_keyword, KeywordResult.suggestion_rank)
         
         result = await db.execute(query)

@@ -76,28 +76,56 @@ async def analyze_keyword(
         if invalid_types:
             raise HTTPException(status_code=400, detail=f"无效的变体类型: {invalid_types}")
         
+        # 生成唯一会话ID
+        import uuid
+        session_id = str(uuid.uuid4())
+        
+        # 初始化进度跟踪
+        analysis_progress[session_id] = {
+            'processed': 0,
+            'total': 0,
+            'percentage': 0.0,
+            'status': 'running',
+            'error': None
+        }
+        
         # 进度回调函数
         async def progress_callback(processed: int, total: int):
-            session_id = analysis_progress.get('current_session')
-            if session_id:
-                analysis_progress[session_id] = {
-                    'processed': processed,
-                    'total': total,
-                    'percentage': round((processed / total) * 100, 2)
-                }
+            analysis_progress[session_id].update({
+                'processed': processed,
+                'total': total,
+                'percentage': round((processed / total) * 100, 2) if total > 0 else 0,
+                'status': 'running'
+            })
         
         # 执行分析
-        result = await KeywordService.analyze_keywords(
-            request.keyword,
-            request.variant_types,
-            db,
-            progress_callback
-        )
-        
-        # 保存当前会话ID到进度跟踪
-        analysis_progress['current_session'] = result['session_id']
-        
-        return KeywordAnalysisResponse(**result)
+        try:
+            result = await KeywordService.analyze_keywords(
+                request.keyword,
+                request.variant_types,
+                db,
+                progress_callback,
+                session_id  # 传递session_id确保一致性
+            )
+            
+            # session_id已经在result中了
+            
+            # 标记完成
+            analysis_progress[session_id].update({
+                'status': 'completed',
+                'percentage': 100.0
+            })
+            
+            return KeywordAnalysisResponse(**result)
+            
+        except Exception as e:
+            # 标记错误
+            analysis_progress[session_id].update({
+                'status': 'error',
+                'error': str(e)
+            })
+            logger.error(f"关键词分析失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
         
     except Exception as e:
         logger.error(f"关键词分析失败: {str(e)}")
@@ -108,17 +136,23 @@ async def get_analysis_progress(session_id: str):
     """获取分析进度"""
     if session_id in analysis_progress:
         progress = analysis_progress[session_id]
-        return ProgressUpdate(
-            session_id=session_id,
-            **progress
-        )
+        return {
+            'session_id': session_id,
+            'processed': progress.get('processed', 0),
+            'total': progress.get('total', 0), 
+            'percentage': progress.get('percentage', 0.0),
+            'status': progress.get('status', 'unknown'),
+            'error': progress.get('error')
+        }
     else:
-        return ProgressUpdate(
-            session_id=session_id,
-            processed=0,
-            total=0,
-            percentage=0.0
-        )
+        return {
+            'session_id': session_id,
+            'processed': 0,
+            'total': 0,
+            'percentage': 0.0,
+            'status': 'not_found',
+            'error': '会话不存在'
+        }
 
 @app.get("/api/history", response_model=List[SearchHistoryResponse])
 async def get_search_history(
@@ -252,6 +286,123 @@ async def analyze_keyword_with_real_data(request: dict):
     except Exception as e:
         logger.error(f"真实数据分析失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+
+@app.get("/api/business-insights/{session_id}")
+async def get_business_insights(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取智能商业洞察和分层机会"""
+    try:
+        results = await KeywordService.get_session_results(session_id, db)
+        
+        # 获取所有建议词
+        all_suggestions = []
+        for variant_type, variants in results['results'].items():
+            for variant_keyword, suggestions in variants.items():
+                all_suggestions.extend(suggestions)
+        
+        if not all_suggestions:
+            return {
+                'session_id': session_id,
+                'business_insights': {
+                    'total_opportunities': 0,
+                    'blue_ocean_count': 0,
+                    'high_value_count': 0,
+                    'avg_commercial_score': 0,
+                    'total_search_volume': 0,
+                    'categories': {},
+                    'recommended_focus': [],
+                    'insights': ['⚠️ 未找到有效的建议词数据']
+                },
+                'opportunities_by_tier': {},
+                'recommendations': [],
+                'summary_stats': {
+                    'total_opportunities': 0,
+                    'blue_ocean_count': 0,
+                    'high_value_count': 0,
+                    'avg_commercial_score': 0,
+                    'total_search_volume': 0,
+                    'total_count': 0,
+                    'unique_count': 0,
+                    'duplicate_removed': 0
+                },
+                'insights_messages': ['⚠️ 未找到有效的建议词数据，请重新进行关键词分析']
+            }
+        
+        # 分析建议词列表 - 强制使用5118真实数据
+        try:
+            analysis = await BusinessAnalyzer.analyze_suggestion_list_with_real_data(all_suggestions, enable_5118=True)
+        except Exception as e:
+            logger.error(f"5118数据分析失败: {str(e)}")
+            # 优雅降级，但明确标明是估算数据
+            analysis = BusinessAnalyzer.analyze_suggestion_list(all_suggestions)
+            analysis['data_source_warning'] = '⚠️ 5118真实数据获取失败，已降级为估算模式'
+        
+        # 生成商业洞察
+        insights = BusinessAnalyzer.generate_business_insights(analysis['top_opportunities'])
+        
+        # 添加去重洞察信息
+        duplicate_removed = analysis.get('duplicate_removed', 0)
+        if duplicate_removed > 0:
+            insights['insights'].insert(0, f"🧹 智能去重处理：从 {analysis.get('total_count', 0)} 个原始建议中去除 {duplicate_removed} 个重复项，保留 {analysis.get('unique_count', 0)} 个有效关键词")
+        
+        # 添加数据源警告（如果有）
+        if 'data_source_warning' in analysis:
+            insights['insights'].insert(0, analysis['data_source_warning'])
+        
+        return {
+            'session_id': session_id,
+            'business_insights': insights,
+            'opportunities_by_tier': insights['categories'],
+            'recommendations': insights['recommended_focus'],
+            'summary_stats': {
+                'total_opportunities': insights['total_opportunities'],
+                'blue_ocean_count': insights['blue_ocean_count'],
+                'high_value_count': insights['high_value_count'],
+                'avg_commercial_score': insights['avg_commercial_score'],
+                'total_search_volume': insights['total_search_volume'],
+                'total_count': analysis.get('total_count', 0),
+                'unique_count': analysis.get('unique_count', 0),
+                'duplicate_removed': analysis.get('duplicate_removed', 0)
+            },
+            'insights_messages': insights['insights']
+        }
+    except Exception as e:
+        logger.error(f"商业洞察分析失败: {str(e)}")
+        error_message = f"商业洞察分析失败: {str(e)}"
+        
+        # 返回错误状态而不是抛出异常
+        return {
+            'session_id': session_id,
+            'business_insights': {
+                'total_opportunities': 0,
+                'blue_ocean_count': 0,
+                'high_value_count': 0,
+                'avg_commercial_score': 0,
+                'total_search_volume': 0,
+                'categories': {},
+                'recommended_focus': [],
+                'insights': [f'❌ {error_message}']
+            },
+            'opportunities_by_tier': {},
+            'recommendations': [],
+            'summary_stats': {
+                'total_opportunities': 0,
+                'blue_ocean_count': 0,
+                'high_value_count': 0,
+                'avg_commercial_score': 0,
+                'total_search_volume': 0,
+                'total_count': 0,
+                'unique_count': 0,
+                'duplicate_removed': 0
+            },
+            'insights_messages': [
+                f'❌ {error_message}',
+                '🔧 请检查网络连接和API配置后重试',
+                '💡 如果问题持续，请联系技术支持'
+            ]
+        }
 
 @app.post("/api/export")
 async def export_results(

@@ -35,6 +35,9 @@ class FiveOneOneEightService:
         self.api_key = api_key
         self.base_url = "http://apis.5118.com"
         self.session: Optional[aiohttp.ClientSession] = None
+        self.rate_limit_delay = 1.0  # 基础延迟1秒
+        self.max_retries = 3  # 最大重试次数
+        self.backoff_factor = 2.0  # 退避因子
         
     async def __aenter__(self):
         """异步上下文管理器入口"""
@@ -60,7 +63,7 @@ class FiveOneOneEightService:
         filter_type: int = 2  # 2:所有流量词
     ) -> List[KeywordData5118]:
         """
-        获取关键词的5118数据
+        获取关键词的5118数据（带重试和速率限制）
         
         Args:
             keyword: 查询关键词
@@ -81,55 +84,85 @@ class FiveOneOneEightService:
             "filter": filter_type
         }
         
-        try:
-            async with self.session.post(
-                f"{self.base_url}/keyword/word/v2",
-                json=params
-            ) as response:
+        # 带重试的请求
+        for attempt in range(self.max_retries):
+            try:
+                # 应用速率限制延迟
+                if attempt > 0:
+                    delay = self.rate_limit_delay * (self.backoff_factor ** (attempt - 1))
+                    logger.info(f"5118 API重试第{attempt}次，延迟{delay:.1f}秒")
+                    await asyncio.sleep(delay)
                 
-                if response.status != 200:
-                    logger.error(f"5118 API请求失败: HTTP {response.status}")
-                    return []
-                
-                data = await response.json()
-                
-                # 检查返回错误码
-                if data.get("errcode") != "0":
-                    logger.error(f"5118 API返回错误: {data.get('errcode')} - {data.get('errmsg')}")
-                    return []
-                
-                # 解析返回的关键词数据
-                word_list = data.get("data", {}).get("word", [])
-                
-                result = []
-                for word_data in word_list:
-                    try:
-                        keyword_obj = KeywordData5118(
-                            keyword=word_data.get("keyword", ""),
-                            index=word_data.get("index", 0),
-                            mobile_index=word_data.get("mobile_index", 0),
-                            haosou_index=word_data.get("haosou_index", 0),
-                            douyin_index=word_data.get("douyin_index", 0),
-                            long_keyword_count=word_data.get("long_keyword_count", 0),
-                            bidword_company_count=word_data.get("bidword_company_count", 0),
-                            bidword_kwc=word_data.get("bidword_kwc", 3),
-                            bidword_pcpv=word_data.get("bidword_pcpv", 0),
-                            bidword_wisepv=word_data.get("bidword_wisepv", 0),
-                            sem_reason=word_data.get("sem_reason", ""),
-                            sem_price=word_data.get("sem_price", ""),
-                            page_url=word_data.get("page_url", "")
-                        )
-                        result.append(keyword_obj)
-                    except Exception as e:
-                        logger.warning(f"解析关键词数据失败: {e}")
+                async with self.session.post(
+                    f"{self.base_url}/keyword/word/v2",
+                    json=params,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    
+                    if response.status != 200:
+                        logger.error(f"5118 API请求失败: HTTP {response.status}")
+                        if attempt == self.max_retries - 1:
+                            return []
                         continue
-                
-                logger.info(f"5118获取关键词数据成功: {keyword} -> {len(result)}条")
-                return result
-                
-        except Exception as e:
-            logger.error(f"5118 API调用异常: {e}")
-            return []
+                    
+                    data = await response.json()
+                    
+                    # 检查返回错误码
+                    errcode = data.get("errcode", "")
+                    errmsg = data.get("errmsg", "")
+                    
+                    if errcode != "0":
+                        # 检查是否是速率限制错误
+                        if "超限" in errmsg or "限制" in errmsg or errcode in ["10002", "10003"]:
+                            logger.warning(f"5118 API速率限制: {errcode} - {errmsg}")
+                            if attempt < self.max_retries - 1:
+                                continue  # 重试
+                        
+                        logger.error(f"5118 API返回错误: {errcode} - {errmsg}")
+                        if attempt == self.max_retries - 1:
+                            return []
+                        continue
+                    
+                    # 解析返回的关键词数据
+                    word_list = data.get("data", {}).get("word", [])
+                    
+                    result = []
+                    for word_data in word_list:
+                        try:
+                            keyword_obj = KeywordData5118(
+                                keyword=word_data.get("keyword", ""),
+                                index=word_data.get("index", 0),
+                                mobile_index=word_data.get("mobile_index", 0),
+                                haosou_index=word_data.get("haosou_index", 0),
+                                douyin_index=word_data.get("douyin_index", 0),
+                                long_keyword_count=word_data.get("long_keyword_count", 0),
+                                bidword_company_count=word_data.get("bidword_company_count", 0),
+                                bidword_kwc=word_data.get("bidword_kwc", 3),
+                                bidword_pcpv=word_data.get("bidword_pcpv", 0),
+                                bidword_wisepv=word_data.get("bidword_wisepv", 0),
+                                sem_reason=word_data.get("sem_reason", ""),
+                                sem_price=word_data.get("sem_price", ""),
+                                page_url=word_data.get("page_url", "")
+                            )
+                            result.append(keyword_obj)
+                        except Exception as e:
+                            logger.warning(f"解析关键词数据失败: {e}")
+                            continue
+                    
+                    logger.info(f"5118获取关键词数据成功: {keyword} -> {len(result)}条")
+                    return result
+                    
+            except asyncio.TimeoutError:
+                logger.warning(f"5118 API请求超时，第{attempt + 1}次尝试")
+                if attempt == self.max_retries - 1:
+                    logger.error("5118 API请求最终超时失败")
+                    return []
+            except Exception as e:
+                logger.error(f"5118 API调用异常: {e}")
+                if attempt == self.max_retries - 1:
+                    return []
+        
+        return []
     
     async def get_blue_ocean_keywords(
         self, 
@@ -217,20 +250,25 @@ class FiveOneOneEightService:
         return min(total_score, 100.0)
     
     async def batch_analyze_keywords(self, keywords: List[str]) -> Dict[str, List[KeywordData5118]]:
-        """批量分析多个关键词"""
+        """批量分析多个关键词（优化并发控制）"""
         results = {}
         
-        # 控制并发数量，避免API限制
-        semaphore = asyncio.Semaphore(3)
+        # 严格控制并发数量，避免5118 API限制
+        semaphore = asyncio.Semaphore(1)  # 只允许1个并发请求
         
         async def analyze_single(keyword: str):
             async with semaphore:
-                data = await self.get_keyword_data(keyword)
-                results[keyword] = data
-                await asyncio.sleep(0.5)  # 防止请求过快
+                try:
+                    data = await self.get_keyword_data(keyword, page_size=10)  # 减少每次请求的数据量
+                    results[keyword] = data
+                    # 增加请求间隔，避免速率限制
+                    await asyncio.sleep(2.0)  # 每个请求间隔2秒
+                except Exception as e:
+                    logger.error(f"分析关键词 {keyword} 失败: {e}")
+                    results[keyword] = []
         
-        # 并发执行
-        tasks = [analyze_single(kw) for kw in keywords]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        # 串行执行而不是并发，确保不超过速率限制
+        for keyword in keywords:
+            await analyze_single(keyword)
         
         return results

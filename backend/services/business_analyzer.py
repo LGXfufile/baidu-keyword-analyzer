@@ -5,9 +5,12 @@
 """
 import re
 import math
+import logging
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 from services.five118_service import FiveOneOneEightService, KeywordData5118
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class BusinessMetrics:
@@ -485,22 +488,137 @@ class BusinessAnalyzer:
         )
     
     @staticmethod
-    def analyze_suggestion_list(suggestions: List[str]) -> Dict:
-        """分析建议词列表的整体商业价值"""
+    async def analyze_suggestion_list_with_real_data(suggestions: List[str], enable_5118: bool = True) -> Dict:
+        """使用5118真实数据分析建议词列表的整体商业价值（优化版）"""
         if not suggestions:
             return {
                 'total_count': 0,
+                'unique_count': 0,
+                'duplicate_removed': 0,
                 'average_commercial_score': 0,
                 'intent_distribution': {},
                 'top_opportunities': []
             }
         
+        # 智能去重：保留原始数量用于统计，去重后进行分析
+        original_count = len(suggestions)
+        unique_suggestions = list(dict.fromkeys(suggestions))  # 保持顺序的去重
+        duplicate_removed = original_count - len(unique_suggestions)
+        
+        # 限制分析数量，避免5118 API超限
+        max_analyze_count = 20  # 最多分析20个关键词
+        if len(unique_suggestions) > max_analyze_count:
+            logger.warning(f"关键词数量({len(unique_suggestions)})超过限制，只分析前{max_analyze_count}个")
+            unique_suggestions = unique_suggestions[:max_analyze_count]
+        
         total_commercial_score = 0
         intent_counts = {}
         analyzed_suggestions = []
         
-        for suggestion in suggestions:
-            metrics = BusinessAnalyzer.analyze_keyword(suggestion, len(suggestions))
+        # 使用信号量控制并发
+        import asyncio
+        semaphore = asyncio.Semaphore(1)  # 严格串行处理
+        
+        async def analyze_single_with_delay(suggestion: str, index: int):
+            async with semaphore:
+                try:
+                    # 添加延迟避免API限制
+                    if index > 0:
+                        await asyncio.sleep(2.0)  # 每个请求间隔2秒
+                    
+                    logger.info(f"正在分析关键词 {index + 1}/{len(unique_suggestions)}: {suggestion}")
+                    metrics = await BusinessAnalyzer.analyze_with_real_data(suggestion, enable_5118)
+                    
+                    return {
+                        'keyword': suggestion,
+                        'metrics': metrics,
+                        'success': True
+                    }
+                except Exception as e:
+                    logger.error(f"分析关键词 '{suggestion}' 失败: {e}")
+                    # 遇到错误时使用估算模式，但标记为非真实数据
+                    fallback_metrics = BusinessAnalyzer.analyze_keyword(suggestion, len(unique_suggestions))
+                    fallback_metrics.real_data_available = False
+                    return {
+                        'keyword': suggestion,
+                        'metrics': fallback_metrics,
+                        'success': False
+                    }
+        
+        # 串行执行所有分析任务
+        for index, suggestion in enumerate(unique_suggestions):
+            result = await analyze_single_with_delay(suggestion, index)
+            
+            if result['success'] or not enable_5118:  # 如果成功或不要求真实数据
+                total_commercial_score += result['metrics'].commercial_score
+                intent_counts[result['metrics'].intent_type] = intent_counts.get(result['metrics'].intent_type, 0) + 1
+                analyzed_suggestions.append(result)
+        
+        if not analyzed_suggestions:
+            logger.error("没有成功分析任何关键词")
+            return {
+                'total_count': original_count,
+                'unique_count': len(unique_suggestions),
+                'duplicate_removed': duplicate_removed,
+                'average_commercial_score': 0,
+                'intent_distribution': {},
+                'top_opportunities': [],
+                'error': '所有关键词分析失败，可能是API限制导致'
+            }
+        
+        # 使用智能排序算法
+        sorted_opportunities = BusinessAnalyzer.smart_sort_opportunities(analyzed_suggestions)
+        
+        # 计算成功分析的数量
+        successful_count = len([r for r in analyzed_suggestions if r['success']])
+        logger.info(f"商业分析完成: 总计{len(unique_suggestions)}词，成功{successful_count}词，使用真实数据{successful_count}词")
+        
+        return {
+            'total_count': original_count,
+            'unique_count': len(unique_suggestions),
+            'duplicate_removed': duplicate_removed,
+            'average_commercial_score': round(total_commercial_score / len(analyzed_suggestions), 1),
+            'intent_distribution': intent_counts,
+            'successful_analysis_count': successful_count,
+            'top_opportunities': [
+                {
+                    'keyword': item['keyword'],
+                    'commercial_score': item['metrics'].commercial_score,
+                    'opportunity_score': item['metrics'].opportunity_score,
+                    'intent_type': item['metrics'].intent_type,
+                    'search_volume_estimate': item['metrics'].search_volume_estimate,
+                    'is_blue_ocean': item['metrics'].is_blue_ocean,
+                    'business_tier': BusinessAnalyzer.get_business_tier(item['metrics']),
+                    'real_data_available': item['metrics'].real_data_available
+                }
+                for item in sorted_opportunities
+            ]
+        }
+    
+    @staticmethod
+    def analyze_suggestion_list(suggestions: List[str]) -> Dict:
+        """分析建议词列表的商业价值（估算模式 - 已弃用）"""
+        if not suggestions:
+            return {
+                'total_count': 0,
+                'unique_count': 0,
+                'duplicate_removed': 0,
+                'average_commercial_score': 0,
+                'intent_distribution': {},
+                'top_opportunities': []
+            }
+        
+        # 智能去重：保留原始数量用于统计，去重后进行分析
+        original_count = len(suggestions)
+        unique_suggestions = list(dict.fromkeys(suggestions))  # 保持顺序的去重
+        duplicate_removed = original_count - len(unique_suggestions)
+        
+        total_commercial_score = 0
+        intent_counts = {}
+        analyzed_suggestions = []
+        
+        for suggestion in unique_suggestions:
+            metrics = BusinessAnalyzer.analyze_keyword(suggestion, len(unique_suggestions))
             total_commercial_score += metrics.commercial_score
             
             intent_counts[metrics.intent_type] = intent_counts.get(metrics.intent_type, 0) + 1
@@ -516,9 +634,14 @@ class BusinessAnalyzer:
             reverse=True
         )[:5]
         
+        # 使用智能排序算法
+        sorted_opportunities = BusinessAnalyzer.smart_sort_opportunities(analyzed_suggestions)
+        
         return {
-            'total_count': len(suggestions),
-            'average_commercial_score': round(total_commercial_score / len(suggestions), 1),
+            'total_count': original_count,
+            'unique_count': len(unique_suggestions),
+            'duplicate_removed': duplicate_removed,
+            'average_commercial_score': round(total_commercial_score / len(unique_suggestions), 1),
             'intent_distribution': intent_counts,
             'top_opportunities': [
                 {
@@ -526,8 +649,129 @@ class BusinessAnalyzer:
                     'commercial_score': item['metrics'].commercial_score,
                     'opportunity_score': item['metrics'].opportunity_score,
                     'intent_type': item['metrics'].intent_type,
-                    'search_volume_estimate': item['metrics'].search_volume_estimate
+                    'search_volume_estimate': item['metrics'].search_volume_estimate,
+                    'is_blue_ocean': item['metrics'].is_blue_ocean,
+                    'business_tier': BusinessAnalyzer.get_business_tier(item['metrics'])
                 }
-                for item in top_opportunities
+                for item in sorted_opportunities
             ]
         }
+    
+    @staticmethod
+    def smart_sort_opportunities(analyzed_suggestions: List[Dict]) -> List[Dict]:
+        """智能商机排序算法 - 蓝海词优先，高价值词其次"""
+        def calculate_sort_score(item):
+            metrics = item['metrics']
+            
+            # 基础评分
+            base_score = metrics.opportunity_score
+            
+            # 蓝海词加权 (最高优先级)
+            if metrics.is_blue_ocean:
+                base_score += 50
+            
+            # 高商业价值加权
+            if metrics.commercial_score >= 70:
+                base_score += 30
+            elif metrics.commercial_score >= 50:
+                base_score += 15
+            
+            # 交易型意图加权
+            if metrics.intent_type == "交易型":
+                base_score += 20
+            elif metrics.intent_type == "商业型":
+                base_score += 10
+            
+            # 高搜索量加权
+            if metrics.search_volume_estimate >= 50000:
+                base_score += 15
+            elif metrics.search_volume_estimate >= 10000:
+                base_score += 8
+            
+            # 低竞争加权
+            if metrics.competition_level in ["很低", "较低"]:
+                base_score += 10
+            
+            return base_score
+        
+        # 按照计算出的评分排序
+        return sorted(analyzed_suggestions, key=calculate_sort_score, reverse=True)
+    
+    @staticmethod
+    def get_business_tier(metrics: BusinessMetrics) -> str:
+        """获取商业等级分层"""
+        if metrics.is_blue_ocean and metrics.opportunity_score >= 60:
+            return "蓝海机会"
+        elif metrics.commercial_score >= 70:
+            return "高价值"
+        elif metrics.opportunity_score >= 40 and metrics.search_volume_estimate >= 10000:
+            return "热门机会"
+        elif metrics.opportunity_score >= 30:
+            return "潜力词"
+        else:
+            return "一般建议"
+    
+    @staticmethod
+    def categorize_opportunities(opportunities: List[Dict]) -> Dict[str, List[Dict]]:
+        """将商机按等级分类"""
+        categories = {
+            "蓝海机会": [],
+            "高价值": [],
+            "热门机会": [],
+            "潜力词": [],
+            "一般建议": []
+        }
+        
+        for opp in opportunities:
+            tier = opp.get('business_tier', '一般建议')
+            categories[tier].append(opp)
+        
+        # 移除空分类
+        return {k: v for k, v in categories.items() if v}
+    
+    @staticmethod
+    def generate_business_insights(opportunities: List[Dict]) -> Dict:
+        """生成商业洞察摘要"""
+        categorized = BusinessAnalyzer.categorize_opportunities(opportunities)
+        
+        total_opportunities = len(opportunities)
+        blue_ocean_count = len(categorized.get("蓝海机会", []))
+        high_value_count = len(categorized.get("高价值", []))
+        
+        # 计算平均商业价值
+        avg_commercial = sum(opp.get('commercial_score', 0) for opp in opportunities) / max(total_opportunities, 1)
+        
+        # 计算总搜索量
+        total_search_volume = sum(opp.get('search_volume_estimate', 0) for opp in opportunities[:10])  # 前10个
+        
+        return {
+            "total_opportunities": total_opportunities,
+            "blue_ocean_count": blue_ocean_count,
+            "high_value_count": high_value_count,
+            "avg_commercial_score": round(avg_commercial, 1),
+            "total_search_volume": total_search_volume,
+            "categories": categorized,
+            "recommended_focus": opportunities[:5] if opportunities else [],
+            "insights": BusinessAnalyzer._generate_insight_messages(categorized, total_opportunities)
+        }
+    
+    @staticmethod
+    def _generate_insight_messages(categorized: Dict, total: int) -> List[str]:
+        """生成洞察信息"""
+        insights = []
+        
+        blue_ocean = len(categorized.get("蓝海机会", []))
+        high_value = len(categorized.get("高价值", []))
+        
+        if blue_ocean > 0:
+            insights.append(f"🌊 发现 {blue_ocean} 个蓝海商机，建议优先布局")
+        
+        if high_value > 0:
+            insights.append(f"💰 发现 {high_value} 个高价值关键词，具有强商业潜力")
+        
+        if blue_ocean + high_value >= total * 0.3:
+            insights.append("🎯 该词具有较强的商业扩展价值")
+        else:
+            insights.append("📈 建议重点关注前5个推荐词进行测试")
+            
+        return insights
