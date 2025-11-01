@@ -82,6 +82,8 @@ export interface ProgressUpdate {
   processed: number
   total: number
   percentage: number
+  status?: 'running' | 'completed' | 'error' | 'not_found' | 'unknown'
+  error?: string
 }
 
 export interface ExportRequest {

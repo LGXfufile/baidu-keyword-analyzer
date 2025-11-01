@@ -335,6 +335,18 @@ const startAnalysis = async () => {
   try {
     keywordStore.setAnalyzing(true)
     keywordStore.clearError()
+    keywordStore.setProgress({ 
+      percentage: 0, 
+      current: 0, 
+      total: 0, 
+      message: '🚀 正在启动分析引擎...',
+      status: 'starting'
+    })
+    
+    ElMessage.info({
+      message: '🔍 开始分析关键词，这可能需要1-2分钟，请耐心等待...',
+      duration: 4000
+    })
     
     const result = await keywordApi.analyzeKeyword({
       keyword: keyword.value,
@@ -343,16 +355,33 @@ const startAnalysis = async () => {
     
     keywordStore.setCurrentAnalysis(result)
     
-    // 开始轮询进度
+    // 开始轮询进度 - 不要在这里设置为完成状态
     startProgressPolling(result.session_id)
     
-    ElMessage.success('分析完成！')
+    // 删除这里的成功消息，让轮询来处理
+    
   } catch (error) {
-    const message = error instanceof Error ? error.message : '分析失败'
-    ElMessage.error(message)
-    keywordStore.setError(message)
-  } finally {
     keywordStore.setAnalyzing(false)
+    
+    // 更详细的错误处理
+    let message = '分析失败'
+    if (error instanceof Error) {
+      if (error.message.includes('timeout')) {
+        message = '请求超时，请检查网络连接或稍后重试'
+      } else if (error.message.includes('Network Error')) {
+        message = '网络连接失败，请检查网络状态'
+      } else if (error.message.includes('canceled')) {
+        message = '请求被取消，可能是网络不稳定'
+      } else {
+        message = error.message
+      }
+    }
+    
+    ElMessage.error({
+      message: `❌ ${message}`,
+      duration: 6000
+    })
+    keywordStore.setError(message)
   }
 }
 
@@ -361,18 +390,110 @@ const startProgressPolling = (sessionId: string) => {
     clearInterval(progressTimer)
   }
   
+  let pollCount = 0
+  const maxPolls = 300 // 最多轮询5分钟 (300 * 1000ms)
+  
   progressTimer = setInterval(async () => {
     try {
+      pollCount++
       const progressData = await keywordApi.getProgress(sessionId)
       keywordStore.setProgress(progressData)
       
-      if (progressData.percentage >= 100) {
+      // 检查完成状态
+      if (progressData.status === 'completed') {
         clearInterval(progressTimer!)
         progressTimer = null
+        keywordStore.setAnalyzing(false)
+        ElMessage.success({
+          message: '🎉 关键词分析完成！正在加载商业洞察数据...',
+          duration: 3000
+        })
+        return
       }
+      
+      // 检查错误状态
+      if (progressData.status === 'error' || progressData.status === 'failed') {
+        clearInterval(progressTimer!)
+        progressTimer = null
+        keywordStore.setAnalyzing(false)
+        const errorMsg = progressData.error || progressData.message || '未知错误'
+        ElMessage.error({
+          message: `❌ 分析失败: ${errorMsg}`,
+          duration: 6000
+        })
+        keywordStore.setError(errorMsg)
+        return
+      }
+      
+      // 检查会话不存在
+      if (progressData.status === 'not_found') {
+        clearInterval(progressTimer!)
+        progressTimer = null
+        keywordStore.setAnalyzing(false)
+        ElMessage.error({
+          message: '❌ 分析会话不存在，请重新开始分析',
+          duration: 4000
+        })
+        return
+      }
+      
+      // 超时保护
+      if (pollCount >= maxPolls) {
+        clearInterval(progressTimer!)
+        progressTimer = null
+        keywordStore.setAnalyzing(false)
+        ElMessage.error({
+          message: '⏰ 分析超时，可能是5118 API限制导致，请稍后重试',
+          duration: 8000
+        })
+        keywordStore.setError('分析超时 - 可能遇到API速率限制，请稍后重试')
+        return
+      }
+      
+      // 更新进度消息
+      if (progressData.message) {
+        keywordStore.setProgress({
+          ...progressData,
+          message: `🔄 ${progressData.message} (${pollCount}s)`
+        })
+      }
+      
+      // 定期显示进度提醒
+      if (pollCount % 30 === 0) { // 每30秒提醒一次
+        ElMessage.info({
+          message: `⏳ 正在分析中...已用时${pollCount}秒，请继续等待`,
+          duration: 2000
+        })
+      }
+      
+      // 兼容旧版本：基于百分比判断完成
+      if (progressData.percentage >= 100 && progressData.status !== 'running') {
+        clearInterval(progressTimer!)
+        progressTimer = null
+        keywordStore.setAnalyzing(false)
+        ElMessage.success({
+          message: '🎉 分析完成！',
+          duration: 3000
+        })
+      }
+      
     } catch (error) {
+      console.error('轮询进度失败:', error)
+      
+      // 网络错误重试逻辑
+      if (pollCount < 5) {
+        console.log(`网络错误，将在第${pollCount}次重试...`)
+        return // 继续轮询而不停止
+      }
+      
       clearInterval(progressTimer!)
       progressTimer = null
+      keywordStore.setAnalyzing(false)
+      ElMessage.error({
+        message: '❌ 网络连接失败，无法获取分析进度，请检查网络后重试',
+        duration: 6000
+      })
+      keywordStore.setError('网络连接失败')
     }
   }, 1000)
 }
